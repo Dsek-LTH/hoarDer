@@ -4,15 +4,45 @@ import { v1 as neo4j } from "neo4j-driver";
 import { makeAugmentedSchema } from "neo4j-graphql-js";
 
 const typeDefs = `
-type Movie {
-    title: String
-    year: Int
-    imdbRating: Float
-    genres: [Genre] @relation(name: "IN_GENRE", direction: "OUT")
+interface UnitType {
+    name: String!
+    barcode: Identifier
 }
-type Genre {
-        name: String
-        movies: [Movie] @relation(name: "IN_GENRE", direction: "IN")
+interface Unit {
+    container: Container
+}
+
+enum BarcodeType {
+    QR
+    EAN
+}
+
+type Container implements Unit & UnitType {
+    name: String!
+    barcode: Identifier @relation(name: "HAS_BARCODE", direction: "OUT")
+    container: Container @relation(name: "POSITION", direction: "OUT")
+    containsItems: [Unit!] @relation(name: "POSITION", direction: "IN")
+    containsStacks: [ProductStack!]
+}
+type Item implements Unit & UnitType {
+    name: String!
+    barcode: Identifier @relation(name: "HAS_BARCODE", direction: "OUT")
+    container: Container @relation(name: "POSITION", direction: "OUT")
+}
+type ProductStack @relation(name: "CONTAINS_STACK") {
+    amount: Int!
+    to: Container!
+    from: ProductType!
+}
+type ProductType implements UnitType {
+    name: String!
+    barcode: Identifier @relation(name: "HAS_BARCODE", direction: "OUT")
+    stacks: [ProductStack!]
+}
+type Identifier {
+    code: String!
+    barcodeType: BarcodeType!
+    unitType: UnitType @relation(name: "HAS_BARCODE", direction: "IN")
 }
 `;
 
