@@ -10,8 +10,11 @@ services:
       NEO4J_HOST: neo4j
       NEO4J_USER: neo4j
       NEO4J_PASSWORD: password
+      RUN_STARTUP_SCRIPTS: "true"
     build:
       context: .
+    volumes:
+      - "./database_init/:/startup-scripts/:ro"
   neo4j:
     image: neo4j:3.5
     ports:
@@ -24,4 +27,4 @@ services:
       - "./db/data/:/data/:rw"
       - "./db/logs/:/logs/:rw"
       - "./plugins/:/plugins/:ro"
-      - "./database_init/:/var/lib/neo4j/import/:ro"
+      - "./db_import/:/var/lib/neo4j/import/:ro"

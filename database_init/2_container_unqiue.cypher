@@ -1,0 +1,1 @@
+CREATE CONSTRAINT ON (c:Container) ASSERT c.name IS UNIQUE;

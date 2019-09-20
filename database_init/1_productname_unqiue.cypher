@@ -1,0 +1,1 @@
+CREATE CONSTRAINT ON (pt:ProductType) ASSERT pt.name IS UNIQUE;

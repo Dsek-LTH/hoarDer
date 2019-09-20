@@ -1,0 +1,1 @@
+CREATE CONSTRAINT ON (b:Identifier) ASSERT b.code IS UNIQUE;
