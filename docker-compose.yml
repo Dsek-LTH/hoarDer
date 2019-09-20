@@ -23,4 +23,5 @@ services:
     volumes:
       - "./db/data/:/data/:rw"
       - "./db/logs/:/logs/:rw"
+      - "./plugins/:/plugins/:ro"
       - "./database_init/:/var/lib/neo4j/import/:ro"

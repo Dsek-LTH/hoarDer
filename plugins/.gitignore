@@ -1,0 +1,6 @@
+# There should be a neo4j apoc jar in this directory, but we do not want it in version control
+
+# Ignore everything in this directory
+*
+# Except this file
+!.gitignore

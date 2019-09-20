@@ -60,14 +60,23 @@ type Identifier {
     """The category of items represented by this barcode"""
     unitType: UnitType @relation(name: "HAS_BARCODE", direction: "IN")
 }
-`;
 
-const schema = makeAugmentedSchema({ typeDefs });
+type Mutation {
+#TODO: supress mutations we do not want accessed
+"""The proper way to add a new product type"""
+    addProductType(name: String!, barcode: String!, barcodeType: BarcodeType!): ProductType
+    @cypher(statement: """
+        CREATE (pt: ProductType {name: $name})-[:HAS_BARCODE]->(b: Identifier {code: $barcode, barcodeType: $barcodeType})
+        RETURN pt""")
+}
+`;
 
 const driver = neo4j.driver(
       "bolt://" + process.env.NEO4J_HOST + ":7687",
       neo4j.auth.basic(process.env.NEO4J_USER, process.env.NEO4J_PASSWORD),
 );
+
+const schema = makeAugmentedSchema({ typeDefs });
 
 const server = new ApolloServer({ schema, context: { driver } });
 

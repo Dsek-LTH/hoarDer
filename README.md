@@ -15,3 +15,6 @@ Stockkeeping backend for the D-Guild
 - [ ] inventariecheck - diffa mot verkligheten, upptäck svinn
 - [ ] generera menyer för pubar baserat på utcheckade varor
 - [ ] generera internfakturor för utcheckning av jobbardricka
+
+# Setup
+Lägg rätt [https://github.com/neo4j-contrib/neo4j-apoc-procedures](APOC-jarfil) i ./plugins.
