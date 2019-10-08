@@ -42,6 +42,7 @@ type Container implements Unit & UnitType {
     container: Container @relation(name: "POSITION", direction: "OUT")
     containsUnits: [Unit!] @relation(name: "POSITION", direction: "IN")
     containsStacks: [ProductStack!]
+    belongs: Container @relation(name: "BELONGS", direction: "OUT")
 
     """List a unit's container and the container's container and so on,
     with the nearest container first. Limited to 20 containers."""
@@ -65,8 +66,17 @@ type Container implements Unit & UnitType {
 """Singleton type for tying a specific item to specific barcode and container"""
 type Item implements Unit & UnitType {
     name: String!
-    barcode: Identifier @relation(name: "HAS_BARCODE", direction: "OUT")
+    barcode: Identifier! @relation(name: "HAS_BARCODE", direction: "OUT")
     container: Container @relation(name: "POSITION", direction: "OUT")
+    belongs: Container @relation(name: "BELONGS", direction: "OUT")
+    "Is this item where it belongs? Returns null if it doesn't belong anywhere."
+    isHome: Boolean
+    @cypher(statement: """
+        MATCH (this)-[:BELONGS]->(c :Container)
+        RETURN exists(
+            (this)-[:POSITION]->(c)
+        );
+    """)
     """List a unit's container and the container's container and so on,
     with the nearest container first. Limited to 20 containers."""
     # Limited to 20 to avoid exploding query if graph is malformed
@@ -106,6 +116,18 @@ type Identifier {
     barcodeType: IdType!
     """The category of items represented by this identifier"""
     unitType: UnitType @relation(name: "HAS_BARCODE", direction: "IN")
+}
+
+type Query {
+    """All items with a listed home position which are currently somewhere else"""
+    getItemsNotHome: [Item!]!
+    @cypher(statement: """
+        MATCH (it :Item)-[:BELONGS]->(c :Container)
+        WHERE NOT exists(
+            (it)-[:POSITION]->(c)
+        )
+        RETURN it;
+    """)
 }
 
 type Mutation {
@@ -176,6 +198,21 @@ type Mutation {
         OPTIONAL MATCH (it)-[p :POSITION]->(:Container)
         DELETE p
         CREATE (it)-[p2 :POSITION]->(c2)
+        RETURN true;
+    """)
+
+    """Changes where an item or container should normally be placed"""
+    setUnitBelongs(
+        "barcode of item or movable container"
+        unit: String!,
+        "barcode of container to set as home container"
+        home: String!): Boolean!
+    @cypher(statement: """
+        MATCH (u)-[:HAS_BARCODE]->(:Identifier {code: $unit}),
+            (c: Container)-[:HAS_BARCODE]->(:Identifier {code: $home})
+        OPTIONAL MATCH (u)-[b :BELONGS]->(:Container)
+        DELETE b
+        CREATE (u)-[b2 :BELONGS]->(c)
         RETURN true;
     """)
 }
