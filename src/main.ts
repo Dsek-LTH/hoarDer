@@ -27,9 +27,10 @@ interface Unit {
     transitiveContainers: [Container!]!
 }
 
-enum BarcodeType {
+enum IdType {
     QR
     EAN
+    USERID
 }
 
 """Singleton type which also is able to contain other items.
@@ -98,26 +99,26 @@ type ProductType implements UnitType {
     stacks: [ProductStack!]!
 }
 
-"""A barcode that can be of any type, e.g. QR or EAN codes"""
+"""An identifier that can be of any barcode type, e.g. QR or EAN codes, or StiL"""
 type Identifier {
     """The value encoded in the barcode"""
     code: String!
-    barcodeType: BarcodeType!
-    """The category of items represented by this barcode"""
+    barcodeType: IdType!
+    """The category of items represented by this identifier"""
     unitType: UnitType @relation(name: "HAS_BARCODE", direction: "IN")
 }
 
 type Mutation {
     #TODO: supress mutations we do not want accessed
     """The proper way to add a new product type"""
-    addProductType(name: String!, barcode: String!, barcodeType: BarcodeType!): ProductType
+    addProductType(name: String!, barcode: String!, barcodeType: IdType!): ProductType
     @cypher(statement: """
         CREATE (pt: ProductType {name: $name})-[:HAS_BARCODE]->
         (b: Identifier {code: $barcode, barcodeType: $barcodeType})
         RETURN pt""")
 
     """The proper way to add a new singleton item"""
-    addItem(name: String!, barcode: String!, barcodeType: BarcodeType!): Item
+    addItem(name: String!, barcode: String!, barcodeType: IdType!): Item
     @cypher(statement: """
         CREATE (i: Item {name: $name})-[:HAS_BARCODE]->(b: Identifier {code: $barcode, barcodeType: $barcodeType})
         RETURN i""")
@@ -142,6 +143,24 @@ type Mutation {
             ON CREATE SET to_stack.amount = $amount
             ON MATCH SET to_stack.amount = coalesce(to_stack.amount, 0) + $amount
         SET from_stack.amount = from_stack.amount - $amount
+        RETURN true;
+    """)
+
+    """Move singleton item from one container to another.
+    If the first container does not contain the item the call will fail."""
+    moveItem(
+        "barcode of item"
+        item: String!,
+        "barcode of current container"
+        from: String!,
+        "barcode of container to move item to"
+        to: String!): Boolean!
+    @cypher(statement: """
+        MATCH (it: Item)-[:HAS_BARCODE]->(:Identifier {code: $item}),
+            (it)-[p :POSITION]->(:Container)-[:HAS_BARCODE]->(from_code: Identifier {code: $from}),
+            (c2: Container)-[:HAS_BARCODE]->(to_code: Identifier {code: $to})
+        DELETE p
+        CREATE (it)-[p2 :POSITION]->(c2)
         RETURN true;
     """)
 }
