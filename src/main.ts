@@ -163,6 +163,21 @@ type Mutation {
         CREATE (it)-[p2 :POSITION]->(c2)
         RETURN true;
     """)
+    """Sets the position of a singleton item.
+    If the current position of the item is known, please use moveItem instead."""
+    placeItem(
+        "barcode of item"
+        item: String!,
+        "barcode of container to move item to"
+        to: String!): Boolean!
+    @cypher(statement: """
+        MATCH (it: Item)-[:HAS_BARCODE]->(:Identifier {code: $item}),
+            (c2: Container)-[:HAS_BARCODE]->(to_code: Identifier {code: $to})
+        OPTIONAL MATCH (it)-[p :POSITION]->(:Container)
+        DELETE p
+        CREATE (it)-[p2 :POSITION]->(c2)
+        RETURN true;
+    """)
 }
 `;
 
