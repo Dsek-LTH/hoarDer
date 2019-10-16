@@ -1,2 +1,9 @@
 *.swp
 *.swo
+node_modules/
+npm-debug.log
+database_init/
+db/
+db_import/
+dist/
+plugins
