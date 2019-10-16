@@ -1,4 +1,4 @@
-import { ApolloServer } from "apollo-server";
+import { ApolloServer, AuthenticationError } from "apollo-server";
 import { GraphQLObjectType, GraphQLString } from "graphql";
 import { v1 as neo4j } from "neo4j-driver";
 import { makeAugmentedSchema, neo4jgraphql } from "neo4j-graphql-js";
@@ -215,17 +215,123 @@ type Mutation {
         CREATE (u)-[b2 :BELONGS]->(c)
         RETURN true;
     """)
+
+    """Check out from inventory"""
+    checkOutUnit(
+        "barcode of item"
+        unit: String!,
+        "barcode of current container"
+        from: String!): Boolean!
+    @cypher(statement: """
+        MATCH (it)-[:HAS_BARCODE]->(:Identifier {code: $unit}),
+            (it)-[p :POSITION]->(:Container)-[:HAS_BARCODE]->(from_code: Identifier {code: $from})
+        MERGE (c2: Container)-[:HAS_BARCODE]->(to_code: Identifier {code: $cypherParams.currentUserId, type: 'USERID'})
+        ON CREATE SET c2.name = $cypherParams.currentUserId
+        DELETE p
+        CREATE (it)-[p2 :POSITION]->(c2)
+        RETURN true;
+    """)
+
+    """Check back into inventory"""
+    checkInUnit(
+        "barcode of item"
+        unit: String!,
+        "barcode of target container"
+        target: String!): Boolean!
+    @cypher(statement: """
+        MATCH (it)-[:HAS_BARCODE]->(:Identifier {code: $unit}),
+            (it)-[p :POSITION]->(c :Container),
+            (c)-[:HAS_BARCODE]->(from_code: Identifier {code: $cypherParams.currentUserId}),
+            (c2: Container)-[:HAS_BARCODE]->(to_code: Identifier {code: $target})
+        DELETE p
+        CREATE (it)-[p2 :POSITION]->(c2)
+        RETURN true;
+    """)
+
+    """Check out products from inventory"""
+    checkOutStackItem(
+        "barcode of item"
+        product: String!,
+        "barcode of current container"
+        from: String!,
+        "number of items to move"
+        amount: Int): Boolean!
+    @cypher(statement: """
+        MATCH (pt :ProductType)-[:HAS_BARCODE]->(:Identifier {code: $product}),
+            (pt)-[p :CONTAINS_STACK]->(:Container)-[:HAS_BARCODE]->(from_code: Identifier {code: $from})
+        WHERE p.amount >= $amount
+        MERGE (c2: Container)-[:HAS_BARCODE]->(to_code: Identifier {code: $cypherParams.currentUserId, type: 'USERID'})
+        ON CREATE SET c2.name = $cypherParams.currentUserId
+        MERGE (pt)-[p2 :CONTAINS_STACK]-(c2)
+            ON CREATE SET p2.amount = $amount
+            ON MATCH SET p2.amount = coalesce(p2.amount, 0) + $amount
+        SET p.amount = p.amount - $amount
+        RETURN true;
+    """)
+
+    """Check in products from inventory"""
+    checkInStackItem(
+        "barcode of item"
+        product: String!,
+        "barcode of target container"
+        target: String!,
+        "number of items to move"
+        amount: Int): Boolean!
+    @cypher(statement: """
+        MATCH (pt :ProductType)-[:HAS_BARCODE]->(:Identifier {code: $product}),
+            (c)-[:HAS_BARCODE]->(from_code: Identifier {code: $cypherParams.currentUserId}),
+            (pt)-[p :CONTAINS_STACK]->(c),
+            (c2 :Container)-[:HAS_BARCODE]->(:Identifier {code: $target})
+        WHERE p.amount >= $amount
+        MERGE (pt)-[p2 :CONTAINS_STACK]-(c2)
+            ON CREATE SET p2.amount = $amount
+            ON MATCH SET p2.amount = coalesce(p2.amount, 0) + $amount
+        SET p.amount = p.amount - $amount
+        RETURN true;
+    """)
+
 }
 `;
+
+const requireAuthPassthroughResolver = (obj, params, ctx, resolveInfo) => {
+    if (!ctx.user) {
+        throw new AuthenticationError("request not authenticated");
+    } else {
+        // Handle with resolver generated from schema
+        return neo4jgraphql(obj, params, ctx, resolveInfo);
+    }
+};
+
+const resolvers = {
+    // root entry point to GraphQL service
+    Mutation: {
+        checkInStackItem: requireAuthPassthroughResolver,
+        checkInUnit: requireAuthPassthroughResolver,
+        checkOutStackItem: requireAuthPassthroughResolver,
+        checkOutUnit: requireAuthPassthroughResolver,
+    },
+};
 
 const driver = neo4j.driver(
       "bolt://" + process.env.NEO4J_HOST + ":7687",
       neo4j.auth.basic(process.env.NEO4J_USER, process.env.NEO4J_PASSWORD),
 );
 
-const schema = makeAugmentedSchema({ typeDefs });
+const schema = makeAugmentedSchema({ resolvers, typeDefs });
 
-const server = new ApolloServer({ schema, context: { driver } });
+const getUser = (req) => {
+    const userHeader = req.headers["dsek-user"];
+    return userHeader && JSON.parse(userHeader);
+};
+
+const server = new ApolloServer({
+    context: ({ req }) => {
+        const user = getUser(req);
+        console.log("user", user);
+        const cypherParams = user && { currentUserId: user.userid } || {};
+        return { cypherParams, driver, user };
+    },
+    schema });
 
 server.listen(8082, "0.0.0.0").then(({ url }) => {
       console.log(`GraphQL API ready at ${url}`);
