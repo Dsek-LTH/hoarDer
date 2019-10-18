@@ -4,12 +4,13 @@ import { GraphQLObjectType, GraphQLString } from "graphql";
 import { v1 as neo4j } from "neo4j-driver";
 import { makeAugmentedSchema, neo4jgraphql } from "neo4j-graphql-js";
 
+process.env.AUTH_DIRECTIVES_ROLE_TYPE = "HoarderRole";
 // First element of each typedef has to be a scalar value, it cannot be an object
 // due to makeAugmentedSchema bug!
 const typeDefs = `
 directive @isAuthenticated on OBJECT | FIELD_DEFINITION
-directive @hasRole(roles: [Role]) on OBJECT | FIELD_DEFINITION
-enum Role {
+directive @hasRole(roles: [HoarderRole]) on OBJECT | FIELD_DEFINITION
+enum HoarderRole {
     TEST_PERMISSION,
     ADMIN
 }
