@@ -1,3 +1,4 @@
+import { HasRoleDirective, IsAuthenticatedDirective } from "@dsek/graphql-auth-directives-unsigned";
 import { ApolloServer, AuthenticationError } from "apollo-server";
 import { GraphQLObjectType, GraphQLString } from "graphql";
 import { v1 as neo4j } from "neo4j-driver";
@@ -6,6 +7,14 @@ import { makeAugmentedSchema, neo4jgraphql } from "neo4j-graphql-js";
 // First element of each typedef has to be a scalar value, it cannot be an object
 // due to makeAugmentedSchema bug!
 const typeDefs = `
+directive @isAuthenticated on OBJECT | FIELD_DEFINITION
+directive @hasRole(roles: [Role]) on OBJECT | FIELD_DEFINITION
+enum Role {
+    TEST_PERMISSION,
+    ADMIN
+}
+
+
 """A type of items that can be contained in a container."""
 interface UnitType {
     """Unique human friendly identifier"""
@@ -192,6 +201,7 @@ type Mutation {
         item: String!,
         "barcode of container to move item to"
         to: String!): Boolean!
+    @hasRole(roles: [TEST_PERMISSION, ADMIN])
     @cypher(statement: """
         MATCH (it: Item)-[:HAS_BARCODE]->(:Identifier {code: $item}),
             (c2: Container)-[:HAS_BARCODE]->(to_code: Identifier {code: $to})
@@ -222,6 +232,7 @@ type Mutation {
         unit: String!,
         "barcode of current container"
         from: String!): Boolean!
+    @isAuthenticated
     @cypher(statement: """
         MATCH (it)-[:HAS_BARCODE]->(:Identifier {code: $unit}),
             (it)-[p :POSITION]->(:Container)-[:HAS_BARCODE]->(from_code: Identifier {code: $from})
@@ -238,6 +249,7 @@ type Mutation {
         unit: String!,
         "barcode of target container"
         target: String!): Boolean!
+    @isAuthenticated
     @cypher(statement: """
         MATCH (it)-[:HAS_BARCODE]->(:Identifier {code: $unit}),
             (it)-[p :POSITION]->(c :Container),
@@ -256,6 +268,7 @@ type Mutation {
         from: String!,
         "number of items to move"
         amount: Int): Boolean!
+    @isAuthenticated
     @cypher(statement: """
         MATCH (pt :ProductType)-[:HAS_BARCODE]->(:Identifier {code: $product}),
             (pt)-[p :CONTAINS_STACK]->(:Container)-[:HAS_BARCODE]->(from_code: Identifier {code: $from})
@@ -277,6 +290,7 @@ type Mutation {
         target: String!,
         "number of items to move"
         amount: Int): Boolean!
+    @isAuthenticated
     @cypher(statement: """
         MATCH (pt :ProductType)-[:HAS_BARCODE]->(:Identifier {code: $product}),
             (c)-[:HAS_BARCODE]->(from_code: Identifier {code: $cypherParams.currentUserId}),
@@ -302,22 +316,18 @@ const requireAuthPassthroughResolver = (obj, params, ctx, resolveInfo) => {
     }
 };
 
-const resolvers = {
-    // root entry point to GraphQL service
-    Mutation: {
-        checkInStackItem: requireAuthPassthroughResolver,
-        checkInUnit: requireAuthPassthroughResolver,
-        checkOutStackItem: requireAuthPassthroughResolver,
-        checkOutUnit: requireAuthPassthroughResolver,
-    },
-};
-
 const driver = neo4j.driver(
       "bolt://" + process.env.NEO4J_HOST + ":7687",
       neo4j.auth.basic(process.env.NEO4J_USER, process.env.NEO4J_PASSWORD),
 );
 
-const schema = makeAugmentedSchema({ resolvers, typeDefs });
+const schema = makeAugmentedSchema({
+    schemaDirectives: {
+        hasRole: HasRoleDirective,
+        isAuthenticated: IsAuthenticatedDirective,
+    },
+    typeDefs,
+});
 
 const getUser = (req) => {
     const userHeader = req.headers["dsek-user"];
@@ -327,9 +337,10 @@ const getUser = (req) => {
 const server = new ApolloServer({
     context: ({ req }) => {
         const user = getUser(req);
+        const roles = user && user.permissions;
         console.log("user", user);
         const cypherParams = user && { currentUserId: user.userid } || {};
-        return { cypherParams, driver, user };
+        return { cypherParams, driver, user, roles };
     },
     schema });
 
